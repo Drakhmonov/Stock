@@ -6,190 +6,261 @@
 //
 import UIKit
 
-class PrepareOrderViewController: UIViewController, UITableViewDataSource, UITextViewDelegate {
+class PrepareOrderViewController: UIViewController {
 
-    let orderIndex: Int
-    var order: PlacedOrder
+    // MARK: – Data
 
-    var tableView = UITableView()
-    var quantitiesToPrepare: [String: Int] = [:]
+    private let orderIndex: Int
+    private var order: PlacedOrder
+    private var quantitiesToPrepare: [String: Int]
 
-    let scrollView = UIScrollView()
-    let contentStack = UIStackView()
-    let noteTextView = UITextView()
-    let sendButton = UIButton(type: .system)
+    // MARK: – UI
+
+    private let tableView = UITableView(frame: .zero, style: .grouped)
+    private let noteTextView = UITextView()
+    private let sendButton = UIButton(type: .system)
+
+    // MARK: – Init
 
     init(orderIndex: Int, order: PlacedOrder) {
         self.orderIndex = orderIndex
         self.order = order
+        self.quantitiesToPrepare = Dictionary(
+            uniqueKeysWithValues: order.items.map { ($0.name, 0) }
+        )
         super.init(nibName: nil, bundle: nil)
-        self.quantitiesToPrepare = Dictionary(uniqueKeysWithValues: order.items.map { ($0.name, 0) })
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: – Lifecycle
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
         title = "Prepare Order"
+        view.backgroundColor = .systemBackground
 
-        setupLayout()
-        setupKeyboardObservers()
+        setupTableView()
+        setupNoteTextView()
+        setupSendButton()
 
-        // Tap to dismiss keyboard
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
-        tapGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(tapGesture)
+        // Dismiss keyboard on background tap
+        let tap = UITapGestureRecognizer(
+            target: self,
+            action: #selector(dismissKeyboard)
+        )
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
+    // MARK: – Setup
 
-    func setupLayout() {
-        // Scroll view
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scrollView)
-
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-
-        // Stack view inside scroll view
-        contentStack.axis = .vertical
-        contentStack.spacing = 20
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.addSubview(contentStack)
-
-        NSLayoutConstraint.activate([
-            contentStack.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 20),
-            contentStack.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -20),
-            contentStack.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 20),
-            contentStack.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -20),
-            contentStack.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -40)
-        ])
-
-        // Table view for item list
-        tableView.translatesAutoresizingMaskIntoConstraints = false
+    private func setupTableView() {
         tableView.dataSource = self
-        tableView.isScrollEnabled = false
-        tableView.register(PrepareItemCell.self, forCellReuseIdentifier: "PrepareItemCell")
-        tableView.heightAnchor.constraint(equalToConstant: CGFloat(order.items.count * 60)).isActive = true
-        contentStack.addArrangedSubview(tableView)
+        tableView.delegate   = self
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(tableView)
 
-        // Note text view
+        // Register cells
+        tableView.register(
+            PrepareItemCell.self,
+            forCellReuseIdentifier: PrepareItemCell.reuseIdentifier
+        )
+        tableView.register(
+            UITableViewCell.self,
+            forCellReuseIdentifier: "NoteCell"
+        )
+
+        // Footer contains the send button
+        tableView.tableFooterView = makeFooterView()
+
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor),
+            // Automatically moves above keyboard
+            tableView.bottomAnchor.constraint(
+                equalTo: view.keyboardLayoutGuide.topAnchor)
+        ])
+    }
+
+    private func setupNoteTextView() {
         noteTextView.delegate = self
         noteTextView.font = .systemFont(ofSize: 16)
-        noteTextView.layer.borderColor = UIColor.lightGray.cgColor
         noteTextView.layer.borderWidth = 1
+        noteTextView.layer.borderColor = UIColor.lightGray.cgColor
         noteTextView.layer.cornerRadius = 8
-        noteTextView.text = ""
+        noteTextView.text = "Enter a note..."
         noteTextView.textColor = .lightGray
-        noteTextView.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        contentStack.addArrangedSubview(noteTextView)
+    }
 
-        // Send button
+    private func setupSendButton() {
         sendButton.setTitle("✅ Send to Delivery", for: .normal)
-        sendButton.setTitleColor(.white, for: .normal)
         sendButton.backgroundColor = .systemGreen
-        sendButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 18)
+        sendButton.setTitleColor(.white, for: .normal)
+        sendButton.titleLabel?.font = .boldSystemFont(ofSize: 18)
         sendButton.layer.cornerRadius = 10
-        sendButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        sendButton.addTarget(self, action: #selector(sendToDelivery), for: .touchUpInside)
-        contentStack.addArrangedSubview(sendButton)
+        sendButton.addTarget(
+            self,
+            action: #selector(sendToDelivery),
+            for: .touchUpInside
+        )
     }
 
-    // MARK: - Table View
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return order.items.count
+    private func makeFooterView() -> UIView {
+        let footer = UIView(frame: CGRect(
+            x: 0, y: 0,
+            width: view.bounds.width,
+            height: 80
+        ))
+        footer.addSubview(sendButton)
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            sendButton.leadingAnchor.constraint(
+                equalTo: footer.leadingAnchor, constant: 20),
+            sendButton.trailingAnchor.constraint(
+                equalTo: footer.trailingAnchor, constant: -20),
+            sendButton.centerYAnchor.constraint(
+                equalTo: footer.centerYAnchor),
+            sendButton.heightAnchor.constraint(
+                equalToConstant: 50)
+        ])
+        return footer
     }
 
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let item = order.items[indexPath.row]
-        let cell = tableView.dequeueReusableCell(withIdentifier: "PrepareItemCell", for: indexPath) as! PrepareItemCell
-
-        let currentQty = quantitiesToPrepare[item.name] ?? 0
-        cell.configure(name: item.name, ordered: item.quantity, current: currentQty, max: item.quantity)
-
-        cell.onQuantityChanged = { [weak self] newQty in
-            self?.quantitiesToPrepare[item.name] = newQty
-        }
-
-        return cell
-    }
-
-    // MARK: - Keyboard + Tap Gesture
-
-    func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow),
-                                               name: UIResponder.keyboardWillShowNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide),
-                                               name: UIResponder.keyboardWillHideNotification, object: nil)
-    }
-
-    @objc func keyboardWillShow(notification: Notification) {
-        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        let bottomInset = keyboardFrame.height - view.safeAreaInsets.bottom
-        scrollView.contentInset.bottom = bottomInset + 20
-    }
-
-    @objc func keyboardWillHide(notification: Notification) {
-        scrollView.contentInset.bottom = 0
-    }
-
-    @objc func dismissKeyboard() {
+    @objc private func dismissKeyboard() {
         view.endEditing(true)
     }
 
-    // MARK: - Placeholder Logic
+    // MARK: – Submit
 
-    func textViewDidBeginEditing(_ textView: UITextView) {
-        if textView.textColor == .lightGray {
-            textView.text = ""
-            textView.textColor = .black
-        }
-    }
-
-    func textViewDidEndEditing(_ textView: UITextView) {
-        if textView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            textView.text = ""
-            textView.textColor = .lightGray
-        }
-    }
-
-    // MARK: - Submit
-
-    @objc func sendToDelivery() {
+    @objc private func sendToDelivery() {
         let preparedItems: [CustomStockItem] = order.items.compactMap {
-            let preparedQty = quantitiesToPrepare[$0.name] ?? 0
-            return preparedQty > 0 ? CustomStockItem(name: $0.name, quantity: preparedQty) : nil
+            let qty = quantitiesToPrepare[$0.name] ?? 0
+            return qty > 0
+                ? CustomStockItem(name: $0.name, quantity: qty)
+                : nil
         }
 
-        if preparedItems.isEmpty {
-            let alert = UIAlertController(title: "No Items Prepared", message: "Please select at least one item to send.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+        guard !preparedItems.isEmpty else {
+            let alert = UIAlertController(
+                title: "No Items Prepared",
+                message: "Please select at least one item to send.",
+                preferredStyle: .alert
+            )
+            alert.addAction(.init(title: "OK", style: .default))
             present(alert, animated: true)
             return
         }
 
-        var note = noteTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if note == "" { note = "" }
+        let raw = noteTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = (raw == "Enter a note...") ? "" : raw
 
-        OrderManager.shared.ordersForKitchen[orderIndex].isPrepared = true
-        OrderManager.shared.ordersForKitchen[orderIndex].preparedAt = Date()
-        OrderManager.shared.ordersForKitchen[orderIndex].preparedItems = preparedItems
-        OrderManager.shared.ordersForKitchen[orderIndex].kitchenNote = note
+        var kitchenOrder = OrderManager.shared.ordersForKitchen[orderIndex]
+        kitchenOrder.isPrepared    = true
+        kitchenOrder.preparedAt    = Date()
+        kitchenOrder.preparedItems = preparedItems
+        kitchenOrder.kitchenNote   = note
+        OrderManager.shared.ordersForKitchen[orderIndex] = kitchenOrder
 
-        let alert = UIAlertController(title: "Order Sent ✅", message: "The order has been sent to delivery.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+        let alert = UIAlertController(
+            title: "Order Sent ✅",
+            message: "The order has been sent to delivery.",
+            preferredStyle: .alert
+        )
+        alert.addAction(.init(title: "OK", style: .default) { _ in
             self.navigationController?.popViewController(animated: true)
         })
         present(alert, animated: true)
     }
 }
+
+// MARK: – UITableViewDataSource & Delegate
+
+extension PrepareOrderViewController: UITableViewDataSource, UITableViewDelegate {
+    func numberOfSections(in tableView: UITableView) -> Int { 2 }
+
+    func tableView(_ tv: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return section == 0 ? order.items.count : 1
+    }
+
+    func tableView(_ tv: UITableView, titleForHeaderInSection section: Int) -> String? {
+        return section == 0 ? "Items" : "Note"
+    }
+
+    func tableView(_ tv: UITableView,
+                   cellForRowAt indexPath: IndexPath) -> UITableViewCell
+    {
+        if indexPath.section == 0 {
+            let cell = tv.dequeueReusableCell(
+                withIdentifier: PrepareItemCell.reuseIdentifier,
+                for: indexPath
+            ) as! PrepareItemCell
+            let item = order.items[indexPath.row]
+            let current = quantitiesToPrepare[item.name] ?? 0
+            cell.configure(
+                name: item.name,
+                ordered: item.quantity,
+                current: current,
+                max: item.quantity
+            )
+            cell.onQuantityChanged = { [weak self] newQty in
+                self?.quantitiesToPrepare[item.name] = newQty
+            }
+            return cell
+        } else {
+            let cell = tv.dequeueReusableCell(
+                withIdentifier: "NoteCell",
+                for: indexPath
+            )
+            cell.selectionStyle = .none
+            if noteTextView.superview != cell.contentView {
+                noteTextView.removeFromSuperview()
+                cell.contentView.addSubview(noteTextView)
+                noteTextView.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    noteTextView.topAnchor.constraint(
+                        equalTo: cell.contentView.topAnchor, constant: 8),
+                    noteTextView.bottomAnchor.constraint(
+                        equalTo: cell.contentView.bottomAnchor, constant: -8),
+                    noteTextView.leadingAnchor.constraint(
+                        equalTo: cell.contentView.leadingAnchor, constant: 16),
+                    noteTextView.trailingAnchor.constraint(
+                        equalTo: cell.contentView.trailingAnchor, constant: -16),
+                    noteTextView.heightAnchor.constraint(
+                        equalToConstant: 120)
+                ])
+            }
+            return cell
+        }
+    }
+
+    func tableView(_ tv: UITableView,
+                   heightForRowAt indexPath: IndexPath) -> CGFloat
+    {
+        return indexPath.section == 0 ? 60 : 140
+    }
+}
+
+// MARK: – UITextViewDelegate (placeholder)
+
+extension PrepareOrderViewController: UITextViewDelegate {
+    func textViewDidBeginEditing(_ tv: UITextView) {
+        if tv.textColor == .lightGray {
+            tv.text = ""
+            tv.textColor = .label
+        }
+    }
+    func textViewDidEndEditing(_ tv: UITextView) {
+        if tv.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            tv.text = "Enter a note..."
+            tv.textColor = .lightGray
+        }
+    }
+}
+

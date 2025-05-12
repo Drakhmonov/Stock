@@ -7,6 +7,7 @@
 import Foundation
 
 class OrderManager {
+    /// Shared singleton instance
     static let shared = OrderManager()
     private init() {}
 
@@ -14,7 +15,6 @@ class OrderManager {
     var ordersForKitchen: [PlacedOrder] = []
 
     // MARK: - Adding Orders
-
     /// Add a new branch order with optional branch note.
     func addOrder(branchName: String, items: [CustomStockItem], note: String? = nil) {
         var newOrder = PlacedOrder(branchName: branchName,
@@ -25,7 +25,6 @@ class OrderManager {
     }
 
     // MARK: - Kitchen Workflow
-
     /// Move an order from Pending → Preparing.
     func markOrderAsPreparing(at index: Int) {
         guard ordersForKitchen.indices.contains(index) else { return }
@@ -40,18 +39,14 @@ class OrderManager {
         ordersForKitchen[index].preparedAt = Date()
     }
 
-    /// Undo a Prepared state (Prepared → Preparing or Pending).
+    /// Undo a Prepared state (Prepared → Pending).
     func unmarkPrepared(at index: Int) {
         guard ordersForKitchen.indices.contains(index) else { return }
         ordersForKitchen[index].isPrepared = false
         ordersForKitchen[index].preparedAt = nil
-        // Optionally reset isPreparing:
-        // ordersForKitchen[index].isPreparing = false
-        // ordersForKitchen[index].preparingAt = nil
     }
 
     // MARK: - Delivery Workflow
-
     /// Move an order from Prepared → Collected.
     func markOrderAsCollected(at index: Int) {
         guard ordersForKitchen.indices.contains(index) else { return }
@@ -74,3 +69,63 @@ class OrderManager {
     }
 }
 
+// MARK: - Reporting & Aggregation
+extension OrderManager {
+    /// Returns all orders whose placedAt falls within the interval.
+    func orders(placedIn interval: DateInterval) -> [PlacedOrder] {
+        return ordersForKitchen.filter { interval.contains($0.placedAt) }
+    }
+
+    /// Total number of orders placed in interval.
+    func totalOrders(in interval: DateInterval) -> Int {
+        return orders(placedIn: interval).count
+    }
+
+    /// Total orders prepared in interval.
+    func preparedOrders(in interval: DateInterval) -> Int {
+        return orders(placedIn: interval)
+            .filter { $0.isPrepared && ($0.preparedAt.map(interval.contains) ?? false) }
+            .count
+    }
+
+    /// Total orders collected in interval.
+    func collectedOrders(in interval: DateInterval) -> Int {
+        return orders(placedIn: interval)
+            .filter { $0.isCollected && ($0.collectedAt.map(interval.contains) ?? false) }
+            .count
+    }
+
+    /// Total orders delivered in interval.
+    func deliveredOrders(in interval: DateInterval) -> Int {
+        return orders(placedIn: interval)
+            .filter { $0.isDelivered && ($0.deliveredAt.map(interval.contains) ?? false) }
+            .count
+    }
+
+    /// Average time (in seconds) between placedAt → preparedAt for orders prepared in interval.
+    func averagePrepTime(in interval: DateInterval) -> TimeInterval {
+        let durations = orders(placedIn: interval)
+            .compactMap { order -> TimeInterval? in
+                guard let prepDate = order.preparedAt,
+                      interval.contains(prepDate)
+                else { return nil }
+                return prepDate.timeIntervalSince(order.placedAt)
+            }
+        guard !durations.isEmpty else { return 0 }
+        return durations.reduce(0, +) / Double(durations.count)
+    }
+
+    /// Average time (in seconds) between preparedAt → deliveredAt for orders delivered in interval.
+    func averageDeliveryTime(in interval: DateInterval) -> TimeInterval {
+        let durations = orders(placedIn: interval)
+            .compactMap { order -> TimeInterval? in
+                guard let prepDate = order.preparedAt,
+                      let delDate  = order.deliveredAt,
+                      interval.contains(delDate)
+                else { return nil }
+                return delDate.timeIntervalSince(prepDate)
+            }
+        guard !durations.isEmpty else { return 0 }
+        return durations.reduce(0, +) / Double(durations.count)
+    }
+}

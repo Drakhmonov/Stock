@@ -15,7 +15,8 @@ class ViewController: UIViewController {
         ("Mercato Metropolitano", "🍽️", #selector(mercatoTapped)),
         ("Brent Cross", "🍽️", #selector(brentCrossTapped)),
         ("Central Kitchen", "🏬", #selector(stockTapped)),
-        ("Delivery", "🚚", #selector(deliveryTapped))
+        ("Delivery", "🚚", #selector(deliveryTapped)),
+        ("Reports", "📊", #selector(reportsTapped))
     ]
     
     override func viewDidLoad() {
@@ -105,6 +106,13 @@ class ViewController: UIViewController {
             let deliveryVC = DeliveryPageViewController()
             navigationController?.pushViewController(deliveryVC, animated: true)
         }
+    
+    @objc func reportsTapped() {
+        // TODO: push the reports UI when ready
+        let reportsVC = ReportsViewController()
+        navigationController?.pushViewController(reportsVC, animated: true)
+    }
+
         
         // MARK: - Helper Methods
     func createItemsForBranch(_ branchName: String) -> [CustomStockItem] {
