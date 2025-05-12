@@ -8,20 +8,7 @@ import UIKit
 
 class BranchHistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
 
-    // MARK: – UI Components
-    private let summaryStack = UIStackView()
-    private let totalLabel = UILabel()
-    private let deliveredLabel = UILabel()
-    private let avgLabel = UILabel()
     private let tableView = UITableView()
-
-    // MARK: – Data
-    private let branchName: String
-    private var orders: [PlacedOrder] = []
-    private var todayOrders: [PlacedOrder] = []
-    private var yesterdayOrders: [PlacedOrder] = []
-    private var earlierOrders: [PlacedOrder] = []
-
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "MMM d, h:mm a"
@@ -29,7 +16,12 @@ class BranchHistoryViewController: UIViewController, UITableViewDataSource, UITa
     }()
     private let calendar = Calendar.current
 
-    // MARK: – Init
+    private let branchName: String
+    private var orders: [PlacedOrder] = []
+    private var todayOrders: [PlacedOrder] = []
+    private var yesterdayOrders: [PlacedOrder] = []
+    private var earlierOrders: [PlacedOrder] = []
+
     init(branchName: String) {
         self.branchName = branchName
         super.init(nibName: nil, bundle: nil)
@@ -39,93 +31,51 @@ class BranchHistoryViewController: UIViewController, UITableViewDataSource, UITa
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: – Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "\(branchName) History"
-        view.backgroundColor = .white
+        view.backgroundColor = .systemGroupedBackground
 
-        configureSummaryBar()
         configureTableView()
         loadAndGroupOrders()
     }
 
-    // MARK: – Setup UI
-    private func configureSummaryBar() {
-        summaryStack.axis = .horizontal
-        summaryStack.distribution = .equalSpacing
-        summaryStack.alignment = .center
-        summaryStack.spacing = 16
-
-        [totalLabel, deliveredLabel, avgLabel].forEach { label in
-            label.font = .systemFont(ofSize: 14, weight: .medium)
-            summaryStack.addArrangedSubview(label)
-        }
-
-        summaryStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(summaryStack)
-        NSLayoutConstraint.activate([
-            summaryStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            summaryStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            summaryStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            summaryStack.heightAnchor.constraint(equalToConstant: 30)
-        ])
-    }
-
     private func configureTableView() {
         tableView.dataSource = self
-        tableView.delegate   = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "HistoryCell")
+        tableView.delegate = self
+        tableView.register(BranchHistoryCell.self, forCellReuseIdentifier: BranchHistoryCell.reuseIdentifier)
+        tableView.separatorStyle = .none
+        tableView.backgroundColor = .clear
         tableView.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(tableView)
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: summaryStack.bottomAnchor, constant: 8),
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
-    // MARK: – Data Loading & Grouping
     private func loadAndGroupOrders() {
-        // Filter and sort branch orders
         orders = OrderManager.shared.ordersForKitchen
             .filter { $0.branchName == branchName }
             .sorted { $0.placedAt > $1.placedAt }
 
-        // Summary metrics
-        let total = orders.count
-        let deliveredCount = orders.filter { $0.isDelivered }.count
-        let pct = total > 0 ? Int(Double(deliveredCount) / Double(total) * 100) : 0
-        let avgItems = total > 0 ?
-            Double(orders.map({ $0.items.count }).reduce(0, +)) / Double(total)
-            : 0.0
-
-        totalLabel.text   = "Total: \(total)"
-        deliveredLabel.text = "Delivered: \(pct)%"
-        avgLabel.text     = String(format: "Avg Items: %.1f", avgItems)
-
-        // Chronological grouping
-        todayOrders = []
-        yesterdayOrders = []
-        earlierOrders = []
         let today = Date()
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
 
-        for o in orders {
-            if calendar.isDate(o.placedAt, inSameDayAs: today) {
-                todayOrders.append(o)
-            } else if calendar.isDate(o.placedAt, inSameDayAs: yesterday) {
-                yesterdayOrders.append(o)
-            } else {
-                earlierOrders.append(o)
-            }
+        todayOrders = orders.filter { calendar.isDate($0.placedAt, inSameDayAs: today) }
+        yesterdayOrders = orders.filter { calendar.isDate($0.placedAt, inSameDayAs: yesterday) }
+        earlierOrders = orders.filter {
+            !calendar.isDate($0.placedAt, inSameDayAs: today) &&
+            !calendar.isDate($0.placedAt, inSameDayAs: yesterday)
         }
 
         tableView.reloadData()
     }
 
-    // MARK: – UITableViewDataSource
+    // MARK: - UITableViewDataSource
     func numberOfSections(in tableView: UITableView) -> Int { 3 }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -145,6 +95,10 @@ class BranchHistoryViewController: UIViewController, UITableViewDataSource, UITa
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: BranchHistoryCell.reuseIdentifier, for: indexPath) as? BranchHistoryCell else {
+            return UITableViewCell()
+        }
+
         let order: PlacedOrder
         switch indexPath.section {
         case 0: order = todayOrders[indexPath.row]
@@ -152,42 +106,21 @@ class BranchHistoryViewController: UIViewController, UITableViewDataSource, UITa
         default: order = earlierOrders[indexPath.row]
         }
 
-        let itemsSummary = order.items.map { "\($0.quantity)× \($0.name)" }
-                                     .joined(separator: ", ")
-        let status: String = {
-            if order.isDelivered { return "Delivered" }
-            if order.isCollected { return "Collected" }
-            if order.isPrepared  { return "Prepared" }
-            return "Pending"
-        }()
-        let deliveredAtText = order.deliveredAt.map {
-            " • Delivered: \(dateFormatter.string(from: $0))"
-        } ?? ""
-        let noteSnippet = order.kitchenNote?.isEmpty == false
-            ? " • Note: \(order.kitchenNote!)"
-            : ""
-
-        let text =
-            "\(dateFormatter.string(from: order.placedAt))\n" +
-            "\(itemsSummary)\n" +
-            "Status: \(status)\(deliveredAtText)\(noteSnippet)"
-
-        let cell = tableView.dequeueReusableCell(withIdentifier: "HistoryCell", for: indexPath)
-        cell.textLabel?.numberOfLines = 0
-        cell.textLabel?.text = text
-        cell.accessoryType = .disclosureIndicator
+        cell.configure(with: order, dateFormatter: dateFormatter)
         return cell
     }
 
-    // MARK: – UITableViewDelegate
+    // MARK: - UITableViewDelegate
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+
         let order: PlacedOrder
         switch indexPath.section {
         case 0: order = todayOrders[indexPath.row]
         case 1: order = yesterdayOrders[indexPath.row]
         default: order = earlierOrders[indexPath.row]
         }
+
         let detailVC = BranchOrderDetailViewController(order: order)
         navigationController?.pushViewController(detailVC, animated: true)
     }
