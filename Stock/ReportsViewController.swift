@@ -4,15 +4,9 @@
 //
 //  Created by Dilmurod Rakhmonov on 13/05/2025.
 //
-import UIKit
+import Foundation
 
-// MARK: - Model
-
-struct ReportMetric {
-    let title: String
-    let valueText: String
-}
-
+// MARK: - TimeInterval Formatting
 extension TimeInterval {
     /// Formats a TimeInterval into "Xm Ys" (or "Ys" if under a minute)
     func formattedDuration() -> String {
@@ -26,6 +20,16 @@ extension TimeInterval {
         }
     }
 }
+
+import UIKit
+
+// MARK: - Model
+
+struct ReportMetric {
+    let title: String
+    let valueText: String
+}
+
 // MARK: - Metric Cell
 
 class ReportMetricCell: UITableViewCell {
@@ -78,6 +82,7 @@ class ReportsViewController: UIViewController {
 
     // MARK: Data Source
     private var reportMetrics: [ReportMetric] = []
+    private var currentInterval: DateInterval = DateInterval(start: Date(), end: Date())
 
     // MARK: Lifecycle
     override func viewDidLoad() {
@@ -96,6 +101,7 @@ class ReportsViewController: UIViewController {
         view.addSubview(tableView)
 
         tableView.dataSource = self
+        tableView.delegate = self
         tableView.register(ReportMetricCell.self,
                            forCellReuseIdentifier: ReportMetricCell.reuseID)
 
@@ -121,59 +127,56 @@ class ReportsViewController: UIViewController {
     // MARK: Data Loading
     private func loadAndDisplayData() {
         let now = Date()
-        let calendar = Calendar.current
+        let cal = Calendar.current
         let interval: DateInterval
 
         switch periodControl.selectedSegmentIndex {
         case 0: // Daily
-            let start = calendar.startOfDay(for: now)
-            let end = calendar.date(byAdding: .day, value: 1, to: start)!
+            let start = cal.startOfDay(for: now)
+            let end = cal.date(byAdding: .day, value: 1, to: start)!
             interval = DateInterval(start: start, end: end)
         case 1: // Weekly
-            let comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
-            let weekStart = calendar.date(from: comps)!
-            let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart)!
+            let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
+            let weekStart = cal.date(from: comps)!
+            let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart)!
             interval = DateInterval(start: weekStart, end: weekEnd)
         default: // Monthly
-            let comps = calendar.dateComponents([.year, .month], from: now)
-            let monthStart = calendar.date(from: comps)!
-            let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+            let comps2 = cal.dateComponents([.year, .month], from: now)
+            let monthStart = cal.date(from: comps2)!
+            let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart)!
             interval = DateInterval(start: monthStart, end: monthEnd)
         }
 
-        // Aggregate metrics
+        currentInterval = interval
+
         let om = OrderManager.shared
-        let total = om.totalOrders(in: interval)
-        let prepared = om.preparedOrders(in: interval)
-        let collected = om.collectedOrders(in: interval)
-        let delivered = om.deliveredOrders(in: interval)
-        let avgPrepSec = om.averagePrepTime(in: interval)
+        let total       = om.totalOrders(in: interval)
+        let prepared    = om.preparedOrders(in: interval)
+        let collected   = om.collectedOrders(in: interval)
+        let delivered   = om.deliveredOrders(in: interval)
+        let avgPrepSec  = om.averagePrepTime(in: interval)
         let avgDelivSec = om.averageDeliveryTime(in: interval)
 
-        // Build metric models
         reportMetrics = [
-                ReportMetric(title: "Total Orders",      valueText: "\(total)"),
-                ReportMetric(title: "Prepared Orders",   valueText: "\(prepared)"),
-                ReportMetric(title: "Collected Orders",  valueText: "\(collected)"),
-                ReportMetric(title: "Delivered Orders",  valueText: "\(delivered)"),
-                ReportMetric(title: "Avg. Prep Time",    valueText: avgPrepSec.formattedDuration()),
-                ReportMetric(title: "Avg. Delivery Time",valueText: avgDelivSec.formattedDuration())
-            ]
+            ReportMetric(title: "Total Orders",      valueText: "\(total)"),
+            ReportMetric(title: "Prepared Orders",   valueText: "\(prepared)"),
+            ReportMetric(title: "Collected Orders",  valueText: "\(collected)"),
+            ReportMetric(title: "Delivered Orders",  valueText: "\(delivered)"),
+            ReportMetric(title: "Avg. Prep Time",    valueText: avgPrepSec.formattedDuration()),
+            ReportMetric(title: "Avg. Delivery Time",valueText: avgDelivSec.formattedDuration())
+        ]
 
-            // 4) Refresh the table
-            tableView.reloadData()
+        tableView.reloadData()
     }
 }
 
 // MARK: - UITableViewDataSource
 
 extension ReportsViewController: UITableViewDataSource {
-    func numberOfSections(in tableView: UITableView) -> Int {
-        1
-    }
+    func numberOfSections(in tableView: UITableView) -> Int { 1 }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        reportMetrics.count
+        return reportMetrics.count
     }
 
     func tableView(_ tableView: UITableView,
@@ -185,5 +188,45 @@ extension ReportsViewController: UITableViewDataSource {
         cell.titleLabel.text = metric.title
         cell.valueLabel.text = metric.valueText
         return cell
+    }
+}
+
+// MARK: - UITableViewDelegate
+
+extension ReportsViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let om = OrderManager.shared
+        let orders: [PlacedOrder]
+        let title = reportMetrics[indexPath.row].title
+        switch indexPath.row {
+        case 0:
+            orders = om.orders(placedIn: currentInterval)
+        case 1:
+            orders = om.orders(placedIn: currentInterval)
+                .filter { $0.isPrepared && ($0.preparedAt.map(currentInterval.contains) ?? false) }
+        case 2:
+            orders = om.orders(placedIn: currentInterval)
+                .filter { $0.isCollected && ($0.collectedAt.map(currentInterval.contains) ?? false) }
+        case 3:
+            orders = om.orders(placedIn: currentInterval)
+                .filter { $0.isDelivered && ($0.deliveredAt.map(currentInterval.contains) ?? false) }
+        case 4:
+            orders = om.orders(placedIn: currentInterval)
+                .compactMap { order in
+                    guard let prep = order.preparedAt, currentInterval.contains(prep) else { return nil }
+                    return order
+                }
+        case 5:
+            orders = om.orders(placedIn: currentInterval)
+                .compactMap { order in
+                    guard let del = order.deliveredAt, currentInterval.contains(del) else { return nil }
+                    return order
+                }
+        default:
+            orders = []
+        }
+        let detailVC = ReportDetailViewController(metricTitle: title, orders: orders)
+        navigationController?.pushViewController(detailVC, animated: true)
     }
 }
