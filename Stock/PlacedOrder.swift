@@ -16,6 +16,7 @@ struct PlacedOrder {
     var preparingAt: Date?                // ← New
     var isPrepared: Bool
     var preparedAt: Date?
+    
 
     // Delivery flow
     var isCollected: Bool = false

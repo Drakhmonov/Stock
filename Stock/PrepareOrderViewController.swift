@@ -88,7 +88,7 @@ class PrepareOrderViewController: UIViewController, UITableViewDataSource, UITex
         noteTextView.layer.borderColor = UIColor.lightGray.cgColor
         noteTextView.layer.borderWidth = 1
         noteTextView.layer.cornerRadius = 8
-        noteTextView.text = "Add a kitchen note..."
+        noteTextView.text = ""
         noteTextView.textColor = .lightGray
         noteTextView.heightAnchor.constraint(equalToConstant: 120).isActive = true
         contentStack.addArrangedSubview(noteTextView)
@@ -158,7 +158,7 @@ class PrepareOrderViewController: UIViewController, UITableViewDataSource, UITex
 
     func textViewDidEndEditing(_ textView: UITextView) {
         if textView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            textView.text = "Add a kitchen note..."
+            textView.text = ""
             textView.textColor = .lightGray
         }
     }

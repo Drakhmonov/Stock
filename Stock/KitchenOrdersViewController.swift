@@ -194,24 +194,39 @@ class KitchenOrdersViewController: UIViewController, UITableViewDataSource, UITa
             navigationController?.pushViewController(prepareVC, animated: true)
             
         case 2:
-            // Prepared → show summary + prepared timestamp + Undo
-            let base = summaryMessage(for: order)
-            let preparedAt = order.preparedAt.map { dateFormatter.string(from: $0) } ?? "—"
-            let message = base + "\n\n✅ Prepared at: \(preparedAt)"
-            let alert = UIAlertController(
-                title: "\(order.branchName) Prepared",
-                message: message,
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Undo Prepared", style: .destructive) { _ in
-                OrderManager.shared.unmarkPrepared(at: idx)
-                self.reloadOrders()
-            })
-            alert.addAction(UIAlertAction(title: "OK", style: .cancel))
-            present(alert, animated: true)
-            
-        default:
-            break
+                // 1) Build the base summary + prepared timestamp
+                let base = summaryMessage(for: order)
+                let preparedAtText = order.preparedAt.map { dateFormatter.string(from: $0) } ?? "—"
+                var message = base + "\n\n✅ Prepared at: \(preparedAtText)"
+
+                // 2) If collected, append collected timestamp
+                let sharedOrder = OrderManager.shared.ordersForKitchen[idx]
+                if let collected = sharedOrder.collectedAt {
+                    let collectedAtText = dateFormatter.string(from: collected)
+                    message += "\n⏱ Collected at: \(collectedAtText)"
+                }
+
+                // 3) Create the alert
+                let alert = UIAlertController(
+                    title: "\(order.branchName) Details",
+                    message: message,
+                    preferredStyle: .alert
+                )
+
+                // 4) If *not* yet collected, allow undo
+                if !sharedOrder.isCollected {
+                    alert.addAction(UIAlertAction(title: "Undo Prepared", style: .destructive) { _ in
+                        OrderManager.shared.unmarkPrepared(at: idx)
+                        self.reloadOrders()
+                    })
+                }
+
+                // 5) Always have an OK button to dismiss
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+
+            default:
+                break
         }
     }
 }
