@@ -9,9 +9,9 @@
 import UIKit
 
 class KitchenOrdersViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
-
+    
     // MARK: – UI Components
-
+    
     private let summaryStack: UIStackView = {
         let s = UIStackView()
         s.axis = .horizontal
@@ -23,175 +23,193 @@ class KitchenOrdersViewController: UIViewController, UITableViewDataSource, UITa
     private let pendingLabel   = UILabel()
     private let preparingLabel = UILabel()
     private let preparedLabel  = UILabel()
-
-    private let tableView = UITableView()
-
+    
+    private let tableView = UITableView(frame: .zero, style: .grouped)
+    
     // MARK: – Data
-
+    
     private var pendingOrders:   [PlacedOrder] = []
     private var preparingOrders: [PlacedOrder] = []
     private var preparedOrders:  [PlacedOrder] = []
-
+    
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "MMM d, h:mm a"
         return df
     }()
-
+    
     // MARK: – Lifecycle
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Kitchen Orders"
-        view.backgroundColor = .white
-
-        // 1) Configure summaryStack + labels
+        view.backgroundColor = .systemBackground
+        
+        // Summary bar
         [pendingLabel, preparingLabel, preparedLabel].forEach {
             $0.font = .systemFont(ofSize: 14, weight: .medium)
             summaryStack.addArrangedSubview($0)
         }
-        view.addSubview(summaryStack)
         summaryStack.translatesAutoresizingMaskIntoConstraints = false
-
-        // 2) Configure tableView
+        view.addSubview(summaryStack)
+        
+        // Table view
         tableView.dataSource = self
         tableView.delegate   = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "OrderCell")
+        tableView.register(KitchenOrderCardCell.self,
+                           forCellReuseIdentifier: KitchenOrderCardCell.reuseIdentifier)
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
-
-        // 3) Layout constraints
+        
+        // Layout
         NSLayoutConstraint.activate([
-            // Summary bar at top
             summaryStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             summaryStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             summaryStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             summaryStack.heightAnchor.constraint(equalToConstant: 30),
-
-            // Table view below summary
+            
             tableView.topAnchor.constraint(equalTo: summaryStack.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
-
+    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         reloadOrders()
     }
-
+    
     // MARK: – Data Loading
-
+    
     private func reloadOrders() {
         let all = OrderManager.shared.ordersForKitchen
         pendingOrders   = all.filter { !$0.isPreparing && !$0.isPrepared }
         preparingOrders = all.filter { $0.isPreparing && !$0.isPrepared }
         preparedOrders  = all.filter { $0.isPrepared }
-
-        // Update summary labels
+        
+        // Update summary
         pendingLabel.text   = "🕒 Pending: \(pendingOrders.count)"
         preparingLabel.text = "🔧 Preparing: \(preparingOrders.count)"
         preparedLabel.text  = "✅ Prepared: \(preparedOrders.count)"
-
+        
         tableView.reloadData()
     }
-
+    
     // MARK: – UITableViewDataSource
-
-    func numberOfSections(in tableView: UITableView) -> Int { 3 }
-
+    
+    func numberOfSections(in tableView: UITableView) -> Int {
+        return 3
+    }
+    
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
-            case 0: return pendingOrders.count
-            case 1: return preparingOrders.count
-            default: return preparedOrders.count
+        case 0: return pendingOrders.count
+        case 1: return preparingOrders.count
+        default: return preparedOrders.count
         }
     }
-
+    
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
-            case 0: return "🕒 Pending Orders"
-            case 1: return "🔧 Preparing Orders"
-            default: return "✅ Prepared Orders"
+        case 0: return "🕒 Pending Orders"
+        case 1: return "🔧 Preparing Orders"
+        default: return "✅ Prepared Orders"
         }
     }
-
+    
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let orders: [PlacedOrder]
+        let order: PlacedOrder
         switch indexPath.section {
-            case 0: orders = pendingOrders
-            case 1: orders = preparingOrders
-            default: orders = preparedOrders
+        case 0: order = pendingOrders[indexPath.row]
+        case 1: order = preparingOrders[indexPath.row]
+        default: order = preparedOrders[indexPath.row]
         }
-        let order = orders[indexPath.row]
-
-        var lines: [String] = order.items.map { "• \($0.name): \($0.quantity)" }
-        if let note = order.kitchenNote, !note.isEmpty {
-            lines.append("📩 Note: \(note)")
-        }
-        lines.append("🕓 Placed: \(dateFormatter.string(from: order.placedAt))")
-        if indexPath.section == 1, let prepAt = order.preparingAt {
-            lines.append("🔧 Preparing: \(dateFormatter.string(from: prepAt))")
-        }
-        if indexPath.section == 2, let preparedAt = order.preparedAt {
-            lines.append("✅ Prepared: \(dateFormatter.string(from: preparedAt))")
-        }
-
-        let cell = tableView.dequeueReusableCell(withIdentifier: "OrderCell", for: indexPath)
-        cell.textLabel?.numberOfLines = 0
-        cell.textLabel?.font = .systemFont(ofSize: 14)
-        cell.textLabel?.text = "\(order.branchName)\n" + lines.joined(separator: "\n")
+        
+        let cell = tableView.dequeueReusableCell(
+            withIdentifier: KitchenOrderCardCell.reuseIdentifier,
+            for: indexPath
+        ) as! KitchenOrderCardCell
+        cell.configure(with: order, dateFormatter: dateFormatter)
         return cell
     }
-
+    
+    // MARK: – Helper
+    
+    /// Build a multiline summary of items + branch note
+    private func summaryMessage(for order: PlacedOrder) -> String {
+        // Item lines
+        let itemsText = order.items
+            .map { "• \($0.quantity)x \($0.name)" }
+            .joined(separator: "\n")
+        
+        // Branch note if present
+        let noteText: String
+        if let note = order.kitchenNote, !note.trimmingCharacters(in: .whitespaces).isEmpty {
+            noteText = "\n\n📩 Note: \(note)"
+        } else {
+            noteText = ""
+        }
+        
+        return itemsText + noteText
+    }
+    
     // MARK: – UITableViewDelegate
-
+    
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-
-        let orders: [PlacedOrder]
+        
+        // Pick the correct order object
+        let order: PlacedOrder
         switch indexPath.section {
-            case 0: orders = pendingOrders
-            case 1: orders = preparingOrders
-            default: orders = preparedOrders
+        case 0: order = pendingOrders[indexPath.row]
+        case 1: order = preparingOrders[indexPath.row]
+        default: order = preparedOrders[indexPath.row]
         }
-        let order = orders[indexPath.row]
-
+        
+        // Find its index in the shared array
         guard let idx = OrderManager.shared.ordersForKitchen.firstIndex(where: {
             $0.branchName == order.branchName && $0.placedAt == order.placedAt
         }) else { return }
-
+        
         switch indexPath.section {
         case 0:
-            // Start preparing
-            let alert = UIAlertController(title: "Start Preparing?",
-                                          message: "Begin preparing \(order.branchName)'s order?",
-                                          preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Yes", style: .default) { _ in
+            // Pending → show full order summary and Start Preparing
+            let message = summaryMessage(for: order)
+            let alert = UIAlertController(
+                title: "\(order.branchName) Order",
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Start Preparing", style: .default) { _ in
                 OrderManager.shared.markOrderAsPreparing(at: idx)
                 self.reloadOrders()
             })
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             present(alert, animated: true)
-
+            
         case 1:
-            // Go to detail (adjust quantities + note)
+            // Preparing → push into full Prepare screen
             let prepareVC = PrepareOrderViewController(orderIndex: idx, order: order)
             navigationController?.pushViewController(prepareVC, animated: true)
-
+            
         case 2:
-            // Undo prepared
-            let alert = UIAlertController(title: "Undo Prepared?",
-                                          message: "Mark \(order.branchName)'s order as not prepared?",
-                                          preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Yes", style: .destructive) { _ in
+            // Prepared → show summary + prepared timestamp + Undo
+            let base = summaryMessage(for: order)
+            let preparedAt = order.preparedAt.map { dateFormatter.string(from: $0) } ?? "—"
+            let message = base + "\n\n✅ Prepared at: \(preparedAt)"
+            let alert = UIAlertController(
+                title: "\(order.branchName) Prepared",
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Undo Prepared", style: .destructive) { _ in
                 OrderManager.shared.unmarkPrepared(at: idx)
                 self.reloadOrders()
             })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel))
             present(alert, animated: true)
-
+            
         default:
             break
         }
