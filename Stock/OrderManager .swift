@@ -128,4 +128,51 @@ extension OrderManager {
         guard !durations.isEmpty else { return 0 }
         return durations.reduce(0, +) / Double(durations.count)
     }
+    
+    func itemUsagePerBranch(in interval: DateInterval) -> [String: [String: Int]] {
+        // Filter orders placed in interval
+        let orders = ordersForKitchen.filter { interval.contains($0.placedAt) }
+
+        // Reduce into a nested dictionary
+        var usage: [String: [String: Int]] = [:]
+
+        for order in orders {
+          let branch = order.branchName
+          let items = order.items  // or order.preparedItems where appropriate
+
+          // Initialize branch dictionary if needed
+          if usage[branch] == nil {
+            usage[branch] = [:]
+          }
+
+          for item in items {
+            usage[branch]![item.name, default: 0] += item.quantity
+          }
+        }
+
+        return usage
+      }
+    
+    func deliveredItemUsagePerBranch(in interval: DateInterval)
+           -> [String: [String: Int]] {
+        // 1) Pick orders delivered in the interval
+        let delOrders = ordersForKitchen.filter {
+          $0.isDelivered
+            && $0.deliveredAt.map(interval.contains) == true
+        }
+
+        // 2) Build the nested dictionary
+        var usage: [String: [String:Int]] = [:]
+        for order in delOrders {
+          let branch = order.branchName
+          let items  = order.preparedItems ?? order.items
+
+          if usage[branch] == nil { usage[branch] = [:] }
+          for item in items {
+            usage[branch]![item.name, default: 0] += item.quantity
+          }
+        }
+        return usage
+      }
+    
 }
